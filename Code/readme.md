@@ -8,6 +8,9 @@ Then run the command:
 ```
 conda activate mole3.8
 ```
+
+We build the model based on the DIG package(https://github.com/divelab/DIG), which provides components to compute geometric features.
+
 The model file is stored in the hagonet folder.
 + For QM9 molecular property prediction tasks, we provide the model ```HagoNet_qm9.py```.
 
