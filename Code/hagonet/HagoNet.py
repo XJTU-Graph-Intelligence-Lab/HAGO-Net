@@ -8,7 +8,6 @@ from torch_geometric.nn import radius_graph
 from torch_scatter import scatter, scatter_min
 from math import sqrt
 from math import pi as PI
-# from geonet.newgeocom import xyz_to_dat
 from geonet.features import dist_emb, angle_emb, torsion_emb, area_emb, volume_emb, torsion_emb_3
 from torch_sparse import SparseTensor
 
@@ -89,16 +88,9 @@ def compute_geometry(pos, edge_index, q_index):
     idx_i_t = idx_i.repeat_interleave(num_triplets_t)
     idx_j_t = idx_j.repeat_interleave(num_triplets_t)
     idx_k_t = idx_k.repeat_interleave(num_triplets_t)
-    # idx_h_t = idx_h.repeat_interleave(num_triplets_t)
-    # idx_j_n = idx_j.re
+
     idx_batch_t = idx_batch.repeat_interleave(num_triplets_t)
     mask = (idx_i_t != idx_k_n) & (idx_k_t != idx_k_n)
-    # mask = (idx_i_t != idx_k_n)
-    # print(mask)
-    # mask = idx_j_t != idx_j_n
-    # print (mask)
-    '''idx_i_t, idx_j_t , idx_k_t, idx_k_n,idx_j_n, idx_batch_t = idx_i_t[mask], idx_j_t[mask], idx_k_t[mask],\
-                                                               idx_k_n[mask],idx_j_n[mask], idx_batch_t[mask]'''
 
     idx_i_t, idx_j_t, idx_k_t, idx_k_n, idx_batch_t = idx_i_t[mask], idx_j_t[mask], idx_k_t[mask], \
                                                       idx_k_n[mask], idx_batch_t[mask]
@@ -106,44 +98,16 @@ def compute_geometry(pos, edge_index, q_index):
     pos_j0 = pos[idx_k_t] - pos[idx_j_t]
     pos_ji = pos[idx_i_t] - pos[idx_j_t]
     pos_jk = pos[idx_k_n] - pos[idx_j_t]
-    # pos_i0 = pos[idx_i_t] - pos[idx_j_n]
-    # pos_l0 = pos[idx_l_t] - pos[idx_m_t]
-    # pos_lm = pos[idx_l_t] - pos[idx_m_n]
-    # dist_ji = pos_ji.pow(2).sum(dim=-1).sqrt()
     plane1 = torch.cross(pos_ji, pos_j0)  # ijk
-    # print(plane1.size())
     plane2 = torch.cross(pos_ji, pos_jk)  # ijk'
-    # plane4 = torch.cross(pos_jk, pos_j0)  # jkk'
 
-    # plane5 = torch.cross(pos_l0, pos_lm)
     dist_ji = (pos_ji.pow(2).sum(dim=-1)).sqrt()
     a = (plane1 * plane2).sum(dim=-1)  # cos_angle * |plane1| * |plane2|
-    # b = torch.cross(plane1, plane2).norm(dim=-1)  # sin_angle * |plane1| * |plane2|
     b = (torch.cross(plane1, plane2) * pos_ji).sum(dim=-1) / dist_ji
-
-    # c = (plane1 * plane3).sum(dim=-1)
-    # d = (torch.cross(plane1, plane3) * pos_ji).sum(dim=-1) / dist_ji
-
-    '''
-    dist_j0 = (pos_j0.pow(2).sum(dim=-1)).sqrt()
-    e = (plane1 * plane4).sum(dim=-1)
-    f = (torch.cross(plane1, plane4) * pos_j0).sum(dim=-1) / dist_j0
-    '''
-
-    '''
-    c = (plane1 * plane2).sum(dim=-1)
-    d = torch.cross(plane1, plane2).norm(dim=-1)
-    e = c = (plane1 * plane2).sum(dim=-1)
-    f = torch.cross(plane1, plane2).norm(dim=-1)
-    '''
 
     torsion1 = torch.atan2(b, a)  # -pi to pi
     torsion1[torsion1 <= 0] += 2 * PI  # 0 to 2pi
 
-    '''
-    torsion3 = torch.atan2(f, e)
-    torsion3[torsion3 <= 0] += 2 * PI
-    '''
 
     torsiona, argmin_a = scatter_min(torsion1, idx_batch_t, dim=-1)
     # torsionc, argmin_c = scatter_min(torsion3, idx_batch_t, dim=-1)
@@ -163,8 +127,6 @@ def compute_geometry(pos, edge_index, q_index):
 
     return dist, angle, torsiona, torsiona, torsiona, plane_s, volume, idx_ji, idx_kj
 
-
-# 基函数嵌入表示距离、键角与扭转角几何信息
 class emb(torch.nn.Module):
     def __init__(self, num_spherical, num_radial, cutoff, envelope_exponent):
         super(emb, self).__init__()
@@ -193,8 +155,6 @@ class emb(torch.nn.Module):
 
         return dist_emb, angle_emb, torsiona_emb, torsiona_emb, torsiona_emb, area_emb, volume_emb, angle_emb_2
 
-
-# 残差层设计，两个线性层与自加，激活函数为swish = x·sigmoid(x)
 class ResidualLayer(torch.nn.Module):
     def __init__(self, hidden_channels, act=swish):
         super(ResidualLayer, self).__init__()
@@ -233,8 +193,6 @@ class feaembed(torch.nn.Module):
             # ch = self.emb(ch)
         return chi
 
-
-# 初始化输入模块，首先初始化面消息:节点消息嵌入，边的集合表示嵌入
 class init_v(torch.nn.Module):
     def __init__(self, num_radial, num_spherical, hidden_channels, out_channels, act=swish, use_node_features=True):
         super(init_v, self).__init__()
@@ -246,11 +204,9 @@ class init_v(torch.nn.Module):
         else:  # option to use no node features and a learned embedding vector for each node instead
             self.node_embedding = nn.Parameter(torch.empty((hidden_channels,)))
             nn.init.normal_(self.node_embedding)
-        # self.lin_rbf_0 = Linear(num_radial, hidden_channels)
-        # self.lin_sbf_0 = Linear(num_spherical * num_radial, hidden_channels)
-        # self.lin = Linear(7 * hidden_channels, hidden_channels)
+
         self.lin = Linear(3 * hidden_channels, hidden_channels)
-        # self.lin_rbf_1 = nn.Linear(num_radial, hidden_channels, bias=False)
+
         self.lin1 = nn.Linear(hidden_channels, out_channels, bias=False)
         self.reset_parameters()
 
@@ -279,21 +235,19 @@ class init_e(torch.nn.Module):
         self.use_node_features = use_node_features
         if self.use_node_features:
             self.emb = Embedding(95, hidden_channels)
-            # self.emb1 = Embedding(95, hidden_channels)
+
         else:  # option to use no node features and a learned embedding vector for each node instead
             self.node_embedding = nn.Parameter(torch.empty((hidden_channels,)))
             nn.init.normal_(self.node_embedding)
         self.lin_rbf_0 = Linear(num_radial, hidden_channels)
-        # self.lin_sbf_0 = Linear(num_spherical * num_radial, hidden_channels)
-        # self.lin = Linear(7 * hidden_channels, hidden_channels)
+
         self.lin = Linear(5 * hidden_channels, hidden_channels)
-        # self.lin_rbf_1 = nn.Linear(num_radial, hidden_channels, bias=False)
+
         self.reset_parameters()
 
     def reset_parameters(self):
         self.lin_rbf_0.reset_parameters()
         self.lin.reset_parameters()
-        # glorot_orthogonal(self.lin_rbf_1.weight, scale=2.0)
 
     def forward(self, x, chi, emb, i, j):
         rbf, _, _, _, _, _, _, _ = emb
@@ -301,7 +255,7 @@ class init_e(torch.nn.Module):
             x = self.emb(x)
         else:
             x = self.node_embedding[None, :].expand(x.shape[0], -1)
-        # a_down = v[i] + v[j]
+
         rbf0 = self.act(self.lin_rbf_0(rbf))
         e = self.act(self.lin(torch.cat([x[i], chi[i], x[j], chi[j], rbf0], dim=-1)))
 
@@ -312,32 +266,25 @@ class init_p(torch.nn.Module):
     def __init__(self, num_radial, num_spherical, hidden_channels, act=swish, use_node_features=True):
         super(init_p, self).__init__()
         self.act = act
-        # option to use no node features and a learned embedding vector for each node instead
-        # self.lin_rbf_0 = Linear(num_radial, hidden_channels)
+        
         self.lin_sbf_0 = Linear(num_spherical * num_radial, hidden_channels)
-        # self.lin = Linear(7 * hidden_channels, hidden_channels)
+
         self.weight1 = nn.Parameter(torch.tensor([1], dtype=torch.float32))
         self.bias1 = nn.Parameter(torch.tensor([0], dtype=torch.float32))
         self.lin = Linear(4 * hidden_channels, hidden_channels)
-        # self.lin_rbf_1 = nn.Linear(num_radial, hidden_channels, bias=False)
+
         self.reset_parameters()
 
     def reset_parameters(self):
-        # self.lin_rbf_0.reset_parameters()
         self.lin.reset_parameters()
-        # glorot_orthogonal(self.lin_rbf_1.weight, scale=2.0)
-        # glorot_orthogonal(self.lin_sbf_0.weight, scale=2.0)
         self.weight1 = nn.Parameter(torch.tensor([1], dtype=torch.float32))
         self.bias1 = nn.Parameter(torch.tensor([0], dtype=torch.float32))
 
     def forward(self, e, emb, idx_ji, idx_kj):
-        # k = i
         _, _, _, _, _, area, _, sbf = emb
-        # rbf0 = self.act(self.lin_rbf_0(area))
         e, _ = e
         area = self.act(area * self.weight1 + self.bias1)
         sbf0 = self.act(self.lin_sbf_0(sbf))
-        # a_down = e[idx_kj] + e[idx_ji]
         p = self.act(self.lin(torch.cat([e[idx_ji], e[idx_kj], area, sbf0], dim=-1)))
         return p, 1
 
@@ -346,35 +293,20 @@ class init_b(torch.nn.Module):
     def __init__(self, num_radial, num_spherical, hidden_channels, act=swish, use_node_features=True):
         super(init_b, self).__init__()
         self.act = act
-        # option to use no node features and a learned embedding vector for each node instead
-        # self.lin_rbf_0 = Linear(num_radial, hidden_channels)
         self.weight1 = nn.Parameter(torch.tensor([1], dtype=torch.float32))
         self.bias1 = nn.Parameter(torch.tensor([0], dtype=torch.float32))
-        # self.lin_sbf_0 = Linear(num_spherical * num_radial, hidden_channels)
-        # self.lin = Linear(7 * hidden_channels, hidden_channels)
-        # self.lin = Linear(hidden_channels, hidden_channels)
-        # self.lin_rbf_1 = nn.Linear(num_radial, hidden_channels, bias=False)
         self.reset_parameters()
 
     def reset_parameters(self):
-        # self.lin_rbf_0.reset_parameters()
-        # self.lin.reset_parameters()
-        # glorot_orthogonal(self.lin_rbf_1.weight, scale=2.0)
         self.weight1 = nn.Parameter(torch.tensor([1], dtype=torch.float32))
         self.bias1 = nn.Parameter(torch.tensor([0], dtype=torch.float32))
 
     def forward(self, emb):
-        # k = i
         _, _, _, _, _, _, volume, _ = emb
         rbf0 = self.act(volume * self.weight1 + self.bias1)
-        # sbf0 = self.act(self.lin_sbf_0(sbf))
-        # a_down = e[idx_kj] + e[idx_ji]
         return rbf0
 
 
-# 交互模块一：面级交互
-# 几何信息包含对面之间的距离与角度消息嵌入；
-# 聚合信息包括邻居四类面消息与初始面消息。
 class update_p(torch.nn.Module):
     def __init__(self, hidden_channels, int_emb_size, basis_emb_size_dist, basis_emb_size_angle, basis_emb_size_torsion,
                  num_spherical, num_radial,
@@ -389,9 +321,7 @@ class update_p(torch.nn.Module):
         self.lin_t2 = nn.Linear(basis_emb_size_torsion, int_emb_size, bias=False)
         self.lin_sbf = nn.Linear(num_spherical * num_radial, hidden_channels, bias=False)
 
-        #self.lin_p1 = nn.Linear(hidden_channels, hidden_channels)
         self.lin_p2 = nn.Linear(hidden_channels, hidden_channels)
-        #self.lin_p3 = nn.Linear(hidden_channels, hidden_channels)
         self.lin_p4 = nn.Linear(hidden_channels, hidden_channels)
 
         self.lin_down = nn.Linear(hidden_channels, int_emb_size, bias=False)
@@ -407,8 +337,6 @@ class update_p(torch.nn.Module):
             for _ in range(num_after_skip)
         ])
 
-        # self.reset_parameters()
-
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -420,12 +348,8 @@ class update_p(torch.nn.Module):
         glorot_orthogonal(self.lin_t1.weight, scale=2.0)
         glorot_orthogonal(self.lin_t2.weight, scale=2.0)
 
-        #glorot_orthogonal(self.lin_p1.weight, scale=2.0)
-        #self.lin_p1.bias.data.fill_(0)
         glorot_orthogonal(self.lin_p2.weight, scale=2.0)
         self.lin_p2.bias.data.fill_(0)
-        #glorot_orthogonal(self.lin_p3.weight, scale=2.0)
-        #self.lin_p3.bias.data.fill_(0)
         glorot_orthogonal(self.lin_p4.weight, scale=2.0)
         self.lin_p4.bias.data.fill_(0)
 
@@ -444,17 +368,10 @@ class update_p(torch.nn.Module):
     def forward(self, p, emb, p_idx_a, p_idx_c):
 
         rbf0, _, ta, tb, tc, _, _, sbf0 = emb
-        # x = e
         x1, _ = p
 
         x_p2 = self.act(self.lin_p2(x1))
-        # x_p3 = self.act(self.lin_p3(x1))
         x_p4 = self.act(self.lin_p4(x1))
-
-        # x_p1 = self.act(self.lin_down(x_p1))
-        # x_p2 = self.act(self.lin_down(x_p2))
-
-        # x_p3 = self.act(self.lin_down(x_p3))
 
         sbf = self.lin_sbf1(sbf0)
         sbf = self.lin_sbf2(sbf)
@@ -463,22 +380,11 @@ class update_p(torch.nn.Module):
 
         x_p4 = self.act(self.lin_down(x_p4))
 
-        # 几何信息
 
         ta = self.lin_t1(ta)
         ta = self.lin_t2(ta)
 
         x_p4 = x_p4[p_idx_a] * ta
-
-        
-
-        # tc = self.lin_t1(tc)
-        # tc = self.lin_t2(tc)
-        # t = ta + tb + tc
-        # 邻居消息与几何信息
-        # x_p2 = x_p2[p_idx_a] * ta
-        # x_p4 = x_p4[p_idx_c] * tc
-        # x_p2 = self.act(self.lin_up(x_p2))
 
         x_p4 = self.act(self.lin_up(x_p4))
 
@@ -493,10 +399,6 @@ class update_p(torch.nn.Module):
         p2 = self.lin_sbf(sbf0) * p1
         return p1, p2
 
-
-# 交互模块二：边级交互
-# 几何消息包括边之间的键角与边的距离信息；
-# 聚合信息包括由上一模块聚合的面消息与初始边消息和邻居消息。
 class update_e(torch.nn.Module):
     def __init__(self, out_channels, hidden_channels, int_emb_size, basis_emb_size_dist, basis_emb_size_angle,
                  basis_emb_size_torsion,
@@ -549,11 +451,6 @@ class update_e(torch.nn.Module):
         glorot_orthogonal(self.lin_connect.weight, scale=2.0)
         self.lin_connect.bias.data.fill_(0)
 
-
-        #glorot_orthogonal(self.lin_down.weight, scale=2.0)
-        #glorot_orthogonal(self.lin_up.weight, scale=2.0)
-        # glorot_orthogonal(self.lin1.weight, scale=2.0)
-
         glorot_orthogonal(self.lin_up.weight, scale=2.0)
         self.lin_up.bias.data.fill_(0)
         glorot_orthogonal(self.lin_down.weight, scale=2.0)
@@ -575,14 +472,11 @@ class update_e(torch.nn.Module):
         rbf0, sbf, ta, tb, tc, _, _, _ = emb
         _, x1 = p
         x_old, _ = e
-        # x_up = scatter(x1, idx_ji, dim=0, dim_size=x_old.size(0)) + scatter(x1, idx_kj, dim=0, dim_size=x_old.size(0))
-        # print(x1)
         x_up = scatter(x1, idx_ji, dim=0, dim_size=x_old.size(0))
         x_up = self.act(self.lin_get_up(x_up))
 
         x_ji = self.act(self.lin_ji(x_old))
         x_kj = self.act(self.lin_kj(x_old))
-        # x_kj = self.act(self.lin_kj(x1))
 
         rbf = self.lin_rbf1(rbf0)
         rbf = self.lin_rbf2(rbf)
@@ -594,17 +488,9 @@ class update_e(torch.nn.Module):
         sbf = self.lin_sbf2(sbf)
         x_kj = x_kj[idx_kj] * sbf
         
-        '''
-        ta = self.lin_t1(ta)
-        ta = self.lin_t2(ta)
-        x_kj = x_kj * ta
-        '''
-        
         x_kj = scatter(x_kj, idx_ji, dim=0, dim_size=x_old.size(0))
         x_kj = self.act(self.lin_up(x_kj))
         e1 = x_ji + x_kj
-        # v = self.lin1(v)
-        # a_down = v[i] + v[j]
 
         e1 = self.act(self.lin_connect(e1)) + x_up
 
@@ -620,9 +506,6 @@ class update_e(torch.nn.Module):
         return e1, e2
 
 
-# 交互模块三：点级交互
-# 几何信息为边的距离消息；
-# 聚合信息包括邻居节点消息。
 class update_v(torch.nn.Module):
     def __init__(self, hidden_channels, out_emb_channels, out_channels, num_output_layers, act, output_init,
                  num_before_skip, num_after_skip, num_radial, basis_emb_size_dist):
@@ -637,7 +520,6 @@ class update_v(torch.nn.Module):
             self.lins.append(nn.Linear(hidden_channels, hidden_channels))
         self.lin = nn.Linear(hidden_channels, hidden_channels)
         self.lin_connect = nn.Linear(hidden_channels, hidden_channels)
-        # self.lin = nn.Linear(out_emb_channels, out_channels, bias=False)
         self.lin0 = nn.Linear(hidden_channels, hidden_channels, bias=False)
         self.lin1 = nn.Linear(hidden_channels, out_channels, bias=False)
         self.lin_i = nn.Linear(hidden_channels, hidden_channels)
@@ -713,18 +595,11 @@ class update_v(torch.nn.Module):
 
         v2 = self.act(self.lin_connect(v2)) + v_up
 
-        # a_up = b[] + b[] + b[] + b[]
-        # skip connection
         for layer in self.layers_before_skip:
             v2 = layer(v2)
         v2 = self.act(self.lin(v2)) + v_old
         for layer in self.layers_after_skip:
             v2 = layer(v2)
-
-        '''
-        for lin in self.lins:
-            v2 = self.act(lin(v2))
-        '''
 
         v = v2
         v1 = self.lin1(v)
@@ -732,7 +607,6 @@ class update_v(torch.nn.Module):
         return v, v1
 
 
-# 输出模块：分子图消息表示
 class update_u(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels):
         super(update_u, self).__init__()
@@ -742,16 +616,9 @@ class update_u(torch.nn.Module):
         glorot_orthogonal(self.lin.weight, scale=2.0)
 
     def forward(self, u, v, batch):
-        # v  = self.lin(v)
-        # print('v',v.size())
         u += scatter(v, batch, dim=0)
-        # u = self.lin(u)
         return u
 
-
-# 整体网络架构：
-# 包括各模块的初始化与更新这两部分；
-# 最终输出为分子图表示。
 class pgeoNet(torch.nn.Module):
 
     def __init__(
@@ -811,10 +678,7 @@ class pgeoNet(torch.nn.Module):
     def forward(self, batch_data):
         z, chi, pos, batch = batch_data.z, batch_data.chi, batch_data.pos, batch_data.batch
         p_idx_a = batch_data.p_idx_a
-        # output_list1 = []
         edge_index = batch_data.edge_index
-        # print(edge_index)
-        # idx_kj, idx_ji = batch_data.idx_kj, batch_data.idx_ji
         
         vn, en, pn = batch_data.vn, batch_data.en, batch_data.pn
         
@@ -832,10 +696,8 @@ class pgeoNet(torch.nn.Module):
             idx_ji, idx_kj, p_idx_a = compute_index_2(idx_ji, idx_kj, p_idx_a, en, pn, vn)
         
         
-        # print('geo:', dist, angle, torsiona, torsionb, torsionc, i, j, idx_kj, idx_ji)
-        # print(i,j,k)
         emb = self.emb(dist, angle, torsiona, torsiona, torsiona, area, volume, idx_ji, idx_kj, p_idx_a, self.hidden_channels)
-        # print(emb)
+        
         # Initialize edge, node, graph features
         chi = self.feaemb(chi)
         b = self.init_b(emb)
@@ -848,10 +710,5 @@ class pgeoNet(torch.nn.Module):
             p = update_p(p, emb, p_idx_a, p_idx_a)
             e = update_e(p, e, emb, idx_kj, idx_ji)
             v, v1 = update_v(v, emb, e, i, j)
-            # print('v:',v)
-            u = update_u(u, v1, batch)  # u += scatter(v, batch, dim=0)
-            # print('u:',u)
-        # print('v:',v)
-        # output_list1.append(v)
-        # print('u:', u.size())
+            u = update_u(u, v1, batch)
         return u
