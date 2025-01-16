@@ -1,6 +1,6 @@
 # HAGO-Net: Hierarchical Geometric Massage Passing for Molecular Representation Learning
 
-This repository consists of two parts: the Appendix and the Code, corresponding to the AAAI’24 paper HAGO-Net: Hierarchical Geometric Message Passing for Molecular Representation Learning.
+This repository consists of two parts: the **Appendix** and the **Code**, corresponding to the AAAI’24 paper HAGO-Net: Hierarchical Geometric Message Passing for Molecular Representation Learning.
 
 ## Contact
 Please contact stardust@stu.xjtu.edu.cn or peihongbin@xjtu.edu.cn if you have any questions.
